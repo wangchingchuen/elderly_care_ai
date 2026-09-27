@@ -1,0 +1,12 @@
+Flask==3.1.2
+waitress==3.0.2
+numpy==2.2.6
+opencv-python==5.0.0.93
+Pillow==12.3.0
+torch>=2.7,<3
+torchvision>=0.22,<1
+ultralytics==8.4.148
+transformers==4.57.6
+timm==1.0.24
+imageio-ffmpeg==0.6.0
+safetensors>=0.4.3

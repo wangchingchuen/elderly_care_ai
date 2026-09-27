@@ -29,3 +29,15 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Application data, dependency installs and local validation artifacts
+/data/
+/frontend/node_modules/
+/frontend/dist/
+/artifacts/
+/.tools/
+.coverage
+htmlcov/
+*.log
+pytest-cache-files-*/
+*.tsbuildinfo
