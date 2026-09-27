@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home Watch — AI Behavior Query</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-page: #F7F7F5; --bg-card: #FFFFFF;
+    --border: #E9E9E7; --border-strong: #DDDDDA;
+    --text-primary: #37352F; --text-secondary: #787774; --text-tertiary: #9B9A97;
+    --accent: #2383E2; --accent-soft: #E7F3FC; --accent-hover: #1A73C7;
+    --red: #EB5757; --green: #0F9D58; --green-soft: #E9F7EF;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.04), 0 1px 8px rgba(0,0,0,0.03);
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-page); color: var(--text-primary);
+    margin: 0; padding: 0; -webkit-font-smoothing: antialiased;
+  }
+  .shell { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .subtitle { font-size: 14.5px; color: var(--text-secondary); margin: 0 0 32px; line-height: 1.5; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
+    padding: 24px; margin-bottom: 20px;
+  }
+  .field-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field-hint { font-size: 12.5px; color: var(--text-tertiary); margin: -2px 0 10px; line-height: 1.5; }
+  .upload-zone {
+    border: 1.5px dashed var(--border-strong); border-radius: var(--radius-md);
+    padding: 20px; text-align: center; background: #FBFBFA;
+    transition: border-color 0.15s ease, background 0.15s ease; cursor: pointer; margin-bottom: 22px;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .upload-zone.has-file { border-style: solid; border-color: var(--green); background: var(--green-soft); }
+  .upload-zone input[type="file"] { display: none; }
+  .upload-icon { font-size: 20px; margin-bottom: 6px; opacity: 0.6; }
+  .upload-text { font-size: 13.5px; color: var(--text-secondary); font-weight: 500; }
+  .upload-text .filename { color: var(--text-primary); font-weight: 600; }
+  input[type="text"] {
+    width: 100%; padding: 11px 13px; font-size: 14px; font-family: inherit;
+    color: var(--text-primary); background: #FBFBFA;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: #FFFFFF; }
+  input[type="text"]::placeholder { color: var(--text-tertiary); }
+  .btn-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+  button {
+    background: var(--accent); color: white; border: none;
+    padding: 10px 20px; font-size: 14px; font-weight: 600; font-family: inherit;
+    border-radius: var(--radius-sm); cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { background: var(--border-strong); color: var(--text-tertiary); cursor: not-allowed; }
+  #status { font-size: 13px; color: var(--text-secondary); }
+
+  .progress-wrap { display: none; margin-top: 16px; }
+  .progress-wrap.active { display: block; }
+  .progress-track {
+    height: 8px; background: #F1F1EF; border-radius: 999px; overflow: hidden; border: 1px solid var(--border);
+  }
+  .progress-fill {
+    height: 100%; background: var(--accent); width: 0%;
+    transition: width 0.3s ease; border-radius: 999px;
+  }
+  .progress-label { font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; }
+
+  #result { display: none; }
+  video { width: 100%; display: block; border-radius: var(--radius-md); background: #000; }
+  .video-wrap { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
+
+  .track-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .track-name { font-size: 12px; color: var(--text-secondary); width: 130px; flex-shrink: 0; text-align: right; }
+  .track-lane {
+    position: relative; height: 28px; background: #F1F1EF; border-radius: var(--radius-sm);
+    flex: 1; overflow: hidden; border: 1px solid var(--border);
+  }
+  .marker {
+    position: absolute; top: 5px; width: 13px; height: 13px; border-radius: 50%;
+    cursor: pointer; transform: translateX(-50%); border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15); z-index: 2; transition: transform 0.1s ease;
+  }
+  .marker:hover { transform: translateX(-50%) scale(1.25); }
+  .marker.fall { background: var(--red); }
+  .marker.normal_lying { background: var(--green); }
+  .block {
+    position: absolute; top: 3px; height: 20px; border-radius: 4px; cursor: pointer;
+    z-index: 1; transition: opacity 0.1s ease;
+  }
+  .block:hover { opacity: 0.75; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend .dot-lg { width: 9px; height: 9px; border-radius: 50%; }
+  .legend .box-lg { width: 14px; height: 9px; border-radius: 2px; }
+
+  #answer {
+    margin-top: 16px; padding: 14px 16px; background: var(--green-soft);
+    border-radius: var(--radius-sm); border-left: 3px solid var(--green);
+    font-size: 13.5px; line-height: 1.8; color: var(--text-primary); display: none; white-space: pre-line;
+  }
+  .footnote { font-size: 12px; color: var(--text-tertiary); text-align: center; margin-top: 40px; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <h1>Home Watch</h1>
+    <p class="subtitle">Upload footage, then ask one or more questions, separated by commas — fall detection uses verified rule-based logic; everything else runs on open-vocabulary AI search.</p>
+
+    <div class="card">
+      <label class="field-label">Video</label>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('videoFile').click()">
+        <input type="file" id="videoFile" accept="video/*" onchange="handleFileSelect()">
+        <div class="upload-icon">⬆</div>
+        <div class="upload-text" id="uploadText">Click to choose a video file</div>
+      </div>
+
+      <label class="field-label">Questions</label>
+      <p class="field-hint">Separate multiple questions with commas — e.g. "did the person fall?, a person eating food, a person using a computer"</p>
+      <input type="text" id="queryText" placeholder='e.g. "did the person fall?, eating, using a computer"'>
+
+      <div class="btn-row">
+        <button id="submitBtn" onclick="submitVideo()">Analyze</button>
+        <div id="status"></div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">Starting…</div>
+      </div>
+    </div>
+
+    <div id="result" class="card">
+      <div class="video-wrap">
+        <video id="player" controls></video>
+      </div>
+      <div id="tracksContainer"></div>
+      <div class="legend" id="legend"></div>
+      <div id="answer"></div>
+    </div>
+
+    <div class="footnote">Prototype — pose-based fall detection is verified; open-vocabulary search confidence varies by scene.</div>
+  </div>
+
+<script>
+let pollTimer = null;
+
+function handleFileSelect() {
+  const fileInput = document.getElementById("videoFile");
+  const zone = document.getElementById("uploadZone");
+  const text = document.getElementById("uploadText");
+  if (fileInput.files.length) {
+    zone.classList.add("has-file");
+    text.innerHTML = '<span class="filename">' + fileInput.files[0].name + '</span> selected';
+  }
+}
+
+async function submitVideo() {
+  const fileInput = document.getElementById("videoFile");
+  const query = document.getElementById("queryText").value;
+  const status = document.getElementById("status");
+  const btn = document.getElementById("submitBtn");
+  const progressWrap = document.getElementById("progressWrap");
+  const progressFill = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+
+  if (!fileInput.files.length) {
+    status.textContent = "Choose a video file first.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("video", fileInput.files[0]);
+  formData.append("query", query);
+
+  btn.disabled = true;
+  status.textContent = "";
+  progressWrap.classList.add("active");
+  progressFill.style.width = "0%";
+  progressLabel.textContent = "Uploading…";
+  document.getElementById("result").style.display = "none";
+
+  try {
+    const res = await fetch("/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    if (data.error) {
+      status.textContent = "Error: " + data.error;
+      btn.disabled = false;
+      progressWrap.classList.remove("active");
+      return;
+    }
+    pollProgress(data.job_id);
+  } catch (err) {
+    status.textContent = "Request failed: " + err;
+    btn.disabled = false;
+    progressWrap.classList.remove("active");
+  }
+}
+
+function pollProgress(jobId) {
+  const progressFill = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+  const btn = document.getElementById("submitBtn");
+  const progressWrap = document.getElementById("progressWrap");
+  const status = document.getElementById("status");
+
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/progress/${jobId}`);
+      const data = await res.json();
+
+      if (data.error) {
+        clearInterval(pollTimer);
+        status.textContent = "Error: " + data.error;
+        btn.disabled = false;
+        progressWrap.classList.remove("active");
+        return;
+      }
+
+      progressFill.style.width = data.percent + "%";
+      progressLabel.textContent = data.stage + " (" + Math.round(data.percent) + "%)";
+
+      if (data.status === "done") {
+        clearInterval(pollTimer);
+        const r = await fetch(`/result/${jobId}`);
+        const result = await r.json();
+        renderResult(result);
+        progressWrap.classList.remove("active");
+        btn.disabled = false;
+      } else if (data.status === "error") {
+        clearInterval(pollTimer);
+        status.textContent = "Error: " + (data.error || "processing failed");
+        progressWrap.classList.remove("active");
+        btn.disabled = false;
+      }
+    } catch (err) {
+      clearInterval(pollTimer);
+      status.textContent = "Polling failed: " + err;
+      btn.disabled = false;
+    }
+  }, 500);
+}
+
+function renderResult(data) {
+  document.getElementById("result").style.display = "block";
+
+  const player = document.getElementById("player");
+  player.src = data.video_url;
+
+  const duration = data.duration || 1;
+  const tracksContainer = document.getElementById("tracksContainer");
+  const legend = document.getElementById("legend");
+  tracksContainer.innerHTML = "";
+  legend.innerHTML = "";
+
+  const hasFallEvents = (data.events || []).length > 0;
+  if (hasFallEvents) {
+    const row = document.createElement("div");
+    row.className = "track-row";
+    const name = document.createElement("div");
+    name.className = "track-name";
+    name.textContent = "Fall / lying";
+    const lane = document.createElement("div");
+    lane.className = "track-lane";
+    data.events.forEach(ev => {
+      const marker = document.createElement("div");
+      marker.className = "marker " + ev.type;
+      marker.style.left = (ev.time / duration * 100) + "%";
+      marker.title = ev.type + " at " + ev.time + "s";
+      marker.onclick = () => { player.currentTime = Math.max(0, ev.time - 1); player.play(); };
+      lane.appendChild(marker);
+    });
+    row.appendChild(name);
+    row.appendChild(lane);
+    tracksContainer.appendChild(row);
+
+    legend.innerHTML += `<div class="legend-item"><span class="dot-lg" style="background:#EB5757;"></span> Fall</div>`;
+    legend.innerHTML += `<div class="legend-item"><span class="dot-lg" style="background:#0F9D58;"></span> Normal lying down</div>`;
+  }
+
+  (data.tracks || []).forEach(track => {
+    const row = document.createElement("div");
+    row.className = "track-row";
+    const name = document.createElement("div");
+    name.className = "track-name";
+    name.textContent = track.label;
+    const lane = document.createElement("div");
+    lane.className = "track-lane";
+    track.intervals.forEach(iv => {
+      const block = document.createElement("div");
+      block.className = "block";
+      const leftPct = (iv.start / duration * 100);
+      const widthPct = Math.max(((iv.end - iv.start) / duration * 100), 0.8);
+      block.style.left = leftPct + "%";
+      block.style.width = widthPct + "%";
+      block.style.background = track.color + "55";
+      block.style.border = "1.5px solid " + track.color;
+      block.title = `${iv.start}s – ${iv.end}s (confidence ${iv.score})`;
+      block.onclick = () => { player.currentTime = Math.max(0, iv.start - 0.5); player.play(); };
+      lane.appendChild(block);
+    });
+    row.appendChild(name);
+    row.appendChild(lane);
+    tracksContainer.appendChild(row);
+
+    legend.innerHTML += `<div class="legend-item"><span class="box-lg" style="background:${track.color}33; border:1px solid ${track.color};"></span> ${track.label}</div>`;
+  });
+
+  const answerBox = document.getElementById("answer");
+  if (data.answer) {
+    answerBox.style.display = "block";
+    answerBox.textContent = data.answer;
+  } else {
+    answerBox.style.display = "none";
+  }
+}
+</script>
+</body>
+</html>

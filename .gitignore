@@ -1,0 +1,31 @@
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local media and generated results
+/test_photos/
+/test_videos/
+/outputs/
+/webapp/uploads/
+/webapp/static/outputs/
+
+# Downloaded model weights
+*.pt
+*.pth
+*.safetensors
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
