@@ -1,5 +1,6 @@
 """Bounded-memory pretrained inference; timestamps are source-video seconds."""
 import os
+import math
 import subprocess
 import time
 from collections import Counter, deque
@@ -29,7 +30,15 @@ def classify_pose(points, confidence):
         return 'uncertain'
     ankle = (points[15] + points[16]) / 2
     ratio = (ankle[1] - hip[1]) / max(abs(torso[1]), 1)
-    return 'standing' if ratio > 1.3 else 'sitting'
+    angles = []
+    for a, b, c in ((11, 13, 15), (12, 14, 16)):
+        thigh, shin = points[a] - points[b], points[c] - points[b]
+        cosine = np.dot(thigh, shin) / max(float(np.linalg.norm(thigh)*np.linalg.norm(shin)), 1)
+        angles.append(float(np.degrees(np.arccos(np.clip(cosine, -1, 1)))))
+    # Relative body proportions vary; straight knees are stronger evidence than
+    # one fixed leg/torso ratio (which mislabels short-legged standing subjects).
+    straight = min(angles) >= 160 and ratio >= .9
+    return 'standing' if straight or ratio > 1.3 else 'sitting'
 
 
 def hand_near_face(points, confidence):
@@ -112,8 +121,9 @@ class EventBuilder:
             event['start'] = round(event['start'], 3)
             event['end'] = round(min(duration, event['end']), 3)
             event['score'] = round(float(event['score']), 3)
-            # Two independent samples required for behavioral candidates.
-            if event['kind'] in ('fall', 'normal_lying') or event['signals']['samples'] >= 2:
+            # A fleeting hand/object coincidence must not become an eating event.
+            minimum = max(2, math.ceil(1 / self.step)) if event['kind'] == 'eating' else 2
+            if event['kind'] in ('fall', 'normal_lying') or event['signals']['samples'] >= minimum:
                 if event['end'] > event['start']:
                     output.append(event)
         return output
@@ -140,6 +150,13 @@ class Analyzer:
             cache = str(self.root / 'data/models/hf')
             self.processor = AutoProcessor.from_pretrained(model_id, cache_dir=cache)
             self.odt = OmDetTurboForObjectDetection.from_pretrained(model_id, cache_dir=cache).to(self.device).eval()
+            # Transformers 4.57 meta loading does not restore timm 1.0.24's
+            # non-persistent Swin index/mask buffers. Recompute only geometry,
+            # never reset_parameters() (which would overwrite learned weights).
+            from timm.models.swin_transformer import WindowAttention, SwinTransformerBlock
+            for module in self.odt.modules():
+                if isinstance(module, (WindowAttention, SwinTransformerBlock)):
+                    module._init_buffers()
 
     def objects(self, frame):
         import cv2
@@ -161,7 +178,6 @@ class Analyzer:
         import imageio_ffmpeg
         begin = time.monotonic()
         progress(2, '載入預訓練模型')
-        self._load(daily)
         cap = cv2.VideoCapture(str(source))
         fps = cap.get(cv2.CAP_PROP_FPS)
         total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -172,6 +188,11 @@ class Analyzer:
         if duration > 900:
             cap.release()
             raise ValueError('單段影片上限為 15 分鐘，請先分段')
+        try:
+            self._load(daily)
+        except Exception:
+            cap.release()
+            raise
         stride = max(1, round(fps / 5))
         sample_fps = fps / stride
         step = 1 / sample_fps

@@ -13,6 +13,8 @@ out = ROOT/'artifacts/model-validation'
 out.mkdir(parents=True, exist_ok=True)
 engine = Analyzer(ROOT)
 report = {'videos': [], 'queries': []}
+if not list((ROOT/'test_videos').glob('*.mp4')):
+    raise SystemExit('No local MP4 test videos found; model validation was not run.')
 for path in sorted((ROOT/'test_videos').glob('*.mp4')):
     try:
         last = [0]
@@ -23,6 +25,8 @@ for path in sorted((ROOT/'test_videos').glob('*.mp4')):
         result = engine.analyze(path, out/(path.stem+'-skeleton.mp4'), True, progress)
         report['videos'].append({'name': path.name, **result})
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         report['videos'].append({'name': path.name, 'error': repr(exc)})
         print(repr(exc), flush=True)
     (out/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -33,3 +37,5 @@ for question, expected in [('有進食紀錄嗎？','eating'), ('有疑似跌倒
     report['queries'].append({'question': question, 'expected': expected, 'plan': plan, 'mode': mode, 'warning': warning, 'seconds': round(time.monotonic()-t,2)})
     print(report['queries'][-1], flush=True)
 (out/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+if any('error' in v for v in report['videos']) or any(q['plan']['kind'] != q['expected'] or q['mode'] != 'local_llm' for q in report['queries']):
+    raise SystemExit(1)

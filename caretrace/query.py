@@ -88,6 +88,9 @@ class Planner:
         previous = previous if previous in (*KINDS, 'all') else None
         fallback = fallback or (previous if any(w in question.lower() for w in ['那', '呢', 'then', 'what about']) else None)
         fallback = fallback or ('all' if any(w in question.lower() for w in ['紀錄', '摘要', '發生', 'summary', 'record', 'events']) else 'unsupported')
+        unsupported = any(w in question.lower() for w in ['吃了多少', '吃多少', '攝取量', '服藥', '診斷', 'how much', 'medication', 'diagnos'])
+        if unsupported:
+            fallback = 'unsupported'
         operation = 'compare' if any(w in question.lower() for w in ['比較', '比起', ' vs ', 'compare', '上週']) else 'list'
         if os.getenv('CARETRACE_DISABLE_LLM') == '1':
             return {'kind': fallback, 'operation': operation}, 'rules', '本機語言模型已停用；目前使用關鍵字備援'
@@ -103,7 +106,7 @@ class Planner:
                     {'role': 'assistant', 'content': '{"kind":"fall","operation":"list"}'},
                     {'role': 'user', 'content': '整理照護紀錄'},
                     {'role': 'assistant', 'content': '{"kind":"all","operation":"summary"}'},
-                    {'role': 'user', 'content': json.dumps({'question': question, 'profile': context[:800], 'previous_kind': previous}, ensure_ascii=False)}]
+                    {'role': 'user', 'content': (f'Previous behavior: {previous}.\n' if previous else '') + question}]
                 prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
                 inputs = self.tokenizer(prompt, return_tensors='pt', truncation=True, max_length=1536)
                 import torch
@@ -112,7 +115,7 @@ class Planner:
                 raw = self.tokenizer.decode(tokens[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
                 match = re.search(r'\{[^{}]+\}', raw)
                 plan = validate_plan(json.loads(match.group() if match else raw))
-                if any(w in question.lower() for w in ['多少', '攝取量', '服藥', '診斷', 'how much', 'medication', 'diagnos']):
+                if unsupported:
                     plan['kind'] = 'unsupported'
                 elif fallback not in ('all', 'unsupported') and plan['kind'] != fallback:
                     return {'kind': fallback, 'operation': operation}, 'rules', '語言模型的行為分類與明確關鍵字不一致，已使用可檢查的關鍵字備援'
@@ -146,6 +149,9 @@ def answer(question, events, plan, start, end, compare=None):
     else:
         reviewed = sum(e['review'] == 'confirmed' for e in hits)
         text = f'找到 {len(hits)} 段「{label}」證據，其中 {reviewed} 段經人工確認，其餘仍待覆核。點選下方證據可回看對應時間。'
+        if kind == 'all' or plan.get('operation') == 'summary':
+            counts = {k: sum(e['kind'] == k for e in hits) for k in KINDS}
+            text += ' 行為摘要：' + '、'.join(f'{KINDS[k]} {v} 段' for k, v in counts.items() if v) + '。'
     if compare:
         text += f' 本期有 {len(hits)} 段，對照期間有 {len(previous)} 段。兩期拍攝涵蓋時間可能不同，不能直接視為行為頻率或健康狀態變化。'
     if kind == 'eating':

@@ -61,7 +61,21 @@ try:
         assert details['status'] == 'done'
         if details['selected_track'] is None and details['details']['tracks']:
             page.get_by_label('此住民對應的追蹤代號').select_option(str(details['details']['tracks'][0]['id']))
+        if len(details['details']['tracks']) > 1:
+            tracks = [str(t['id']) for t in details['details']['tracks'][:2]]
+            with page.expect_response('**/assign'):
+                page.get_by_label('此住民對應的追蹤代號').select_option(tracks)
+            assigned = page.request.get(url+f'/api/videos/{vid}').json()['details']['assigned_tracks']
+            assert sorted(assigned) == sorted(map(int, tracks))
+            with page.expect_response('**/assign'):
+                page.get_by_label('此住民對應的追蹤代號').select_option(tracks[:1])
+            report['checks'].append('manual multi-track assignment UI')
         report['checks'].append('real upload, progress, YOLO + OmDet analysis, playable skeleton')
+        if page.locator('.segment.fall').count():
+            target = [e for e in details['events'] if e['kind']=='fall' and e['track_id']==details['details']['tracks'][0]['id']][-1]['start']
+            page.locator('.segment.fall').last.click()
+            assert abs(page.locator('video').evaluate('(v) => v.currentTime')-target) < .3
+            report['checks'].append('timeline seeks to actual evidence timestamp')
         page.screenshot(path=str(OUT/'02-workspace.png'), full_page=True)
         page.get_by_label('照護問題').fill('有疑似跌倒嗎？')
         with page.expect_response('**/api/query', timeout=180000) as response:
@@ -89,7 +103,7 @@ try:
         report['checks'].append('CSV export')
         page.screenshot(path=str(OUT/'03-journal.png'), full_page=True)
         page.reload()
-        expect(page.get_by_text('展示住民 A', exact=True).first).to_be_visible()
+        expect(page.get_by_label('切換住民')).to_have_value(details['resident_id'])
         proc.terminate(); proc.wait(timeout=20)
         proc = start_server()
         page.reload()
@@ -100,6 +114,8 @@ try:
         page.screenshot(path=str(OUT/'04-overview.png'), full_page=True)
         for width, height, name in [(834,1112,'tablet'),(390,844,'mobile')]:
             page.set_viewport_size({'width':width,'height':height})
+            expect(page.get_by_label('切換住民')).to_be_visible()
+            expect(page.get_by_role('button', name='建立其他住民')).to_be_visible()
             page.screenshot(path=str(OUT/f'05-{name}.png'), full_page=True)
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), name
         report['checks'].append('tablet and mobile have no horizontal overflow')
@@ -110,6 +126,21 @@ try:
         expect(page.get_by_role('heading', name='還沒有上傳影片')).to_be_visible()
         assert page.request.get(url+f'/api/videos/{vid}').status == 404
         report['checks'].append('delete removes video and evidence')
+        rid = page.request.get(url+'/api/residents').json()[0]['id']
+        response = page.request.post(url+'/api/videos', multipart={'resident_id':rid,'recorded_at':'2026-09-28T12:00:00+08:00','video':{'name':'corrupt.mp4','mimeType':'video/mp4','buffer':b'not a real video'}})
+        assert response.status == 202
+        bad_id = response.json()['id']
+        for _ in range(100):
+            bad = page.request.get(url+f'/api/videos/{bad_id}').json()
+            if bad['status']=='error': break
+            time.sleep(.1)
+        assert bad['status']=='error' and bad['error']
+        page.reload()
+        page.get_by_role('button', name='影片與資料').click()
+        page.get_by_role('button', name='查看', exact=False).last.click()
+        expect(page.get_by_role('heading',name='分析失敗',exact=True)).to_be_visible()
+        assert page.request.delete(url+f'/api/videos/{bad_id}').status == 204
+        report['checks'].append('corrupt video produces visible failure and remains deletable')
         assert not report['errors'], report['errors']
         browser.close()
 except Exception as exc:

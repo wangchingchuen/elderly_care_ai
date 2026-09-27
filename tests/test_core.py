@@ -9,6 +9,7 @@ from caretrace.app import create_app
 from caretrace.db import connect, initialize
 from caretrace.perception import EventBuilder, Tracker, classify_pose, hand_near_face
 from caretrace.query import answer, date_range, validate_plan, within_dates
+from caretrace.query import Planner
 
 
 class FakePlanner:
@@ -150,6 +151,10 @@ def test_eating_requires_repeated_samples():
     b.add(1, 0, 'sitting', .9, True, .4)
     b.add(1, .2, 'sitting', .9, False)
     assert not any(e['kind'] == 'eating' for e in b.finish(.4))
+    b = EventBuilder(.2)
+    for t in [0,.2,.4,.6,.8]:
+        b.add(1,t,'sitting',.9,True,.4)
+    assert any(e['kind'] == 'eating' for e in b.finish(1))
 
 
 def test_tracker_does_not_reuse_disappeared_identity():
@@ -164,9 +169,35 @@ def test_insufficient_keypoints_are_unknown():
     assert not hand_near_face(np.zeros((17,2)), np.zeros(17))
 
 
+def test_straight_legs_are_not_misclassified_by_body_proportions():
+    points = np.array([[50,0],[45,0],[55,0],[40,0],[60,0],[40,20],[60,20],[40,50],[60,50],
+                       [40,80],[60,80],[40,80],[60,80],[40,115],[60,115],[40,150],[60,150]], dtype=float)
+    assert classify_pose(points, np.ones(17)) == 'standing'
+    points[[13,14]] = [[70,90],[90,90]]
+    points[[15,16]] = [[70,115],[90,115]]
+    assert classify_pose(points, np.ones(17)) == 'sitting'
+
+
+def test_multiple_tracks_may_be_manually_assigned(client, app):
+    rid = resident(client)
+    vid = seed(app, client, rid)
+    assert client.post(f'/api/videos/{vid}/assign', json={'track_ids':[1,2]}).status_code == 200
+    assert len(client.get(f'/api/log?resident_id={rid}').json) == 3
+    assert client.post(f'/api/videos/{vid}/assign', json={'track_ids':[]}).status_code == 200
+    assert client.get(f'/api/log?resident_id={rid}').json == []
+
+
 def test_dates_and_plan_reject_injection():
     assert date_range('這週和上週進食比較', current=datetime.fromisoformat('2026-09-30T10:00:00+08:00')) == ('2026-09-28', '2026-09-30', ['2026-09-21', '2026-09-27'])
     with pytest.raises(ValueError): validate_plan({'kind':'fall', 'operation':'list', 'sql':'DROP TABLE events'})
     with pytest.raises(ValueError): validate_plan({'kind':'medication', 'operation':'list'})
     text, hits, _ = answer('?', [], {'kind':'fall'}, None, None)
     assert '不代表' in text and hits == []
+
+
+def test_keyword_fallback_does_not_claim_intake_or_diagnosis(monkeypatch, tmp_path):
+    monkeypatch.setenv('CARETRACE_DISABLE_LLM','1')
+    planner = Planner(tmp_path)
+    for question in ['他吃了多少？','What medication did they take?']:
+        plan, mode, warning = planner.plan(question)
+        assert plan['kind'] == 'unsupported' and mode == 'rules' and warning

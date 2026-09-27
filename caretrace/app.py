@@ -48,12 +48,18 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
         return {k: v for k, v in video.items() if k not in ('source_path', 'evidence_path')}
 
     def events_for(resident=None):
-        sql = '''SELECT e.*, v.filename, v.recorded_at, v.resident_id, v.selected_track, r.name AS resident_name
+        sql = '''SELECT e.*, v.filename, v.recorded_at, v.resident_id, v.selected_track, v.details AS video_details, r.name AS resident_name
                  FROM events e JOIN videos v ON v.id=e.video_id JOIN residents r ON r.id=v.resident_id
-                 WHERE v.status='done' AND e.track_id=v.selected_track'''
+                 WHERE v.status='done' '''
         with connect(database) as db:
             rows = db.execute(sql + (' AND v.resident_id=?' if resident else '') + ' ORDER BY v.recorded_at,e.start', (resident,) if resident else ()).fetchall()
-        return [unpack(r) for r in rows]
+        result = []
+        for row in rows:
+            item = unpack(row)
+            assigned = json.loads(item.pop('video_details')).get('assigned_tracks', [item['selected_track']])
+            if item['track_id'] in assigned:
+                result.append(item)
+        return result
 
     def worker():
         while True:
@@ -72,6 +78,7 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
                 tracks = result['details']['tracks']
                 # A single track is unambiguous within a user-assigned resident's clip.
                 selected = tracks[0]['id'] if len(tracks) == 1 else None
+                result['details']['assigned_tracks'] = [selected] if selected is not None else []
                 with connect(database) as db:
                     db.execute('DELETE FROM events WHERE video_id=?', (video_id,))
                     for e in result['events']:
@@ -210,11 +217,15 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
     @app.post('/api/videos/<video_id>/assign')
     def assign(video_id):
         video = fetch_video(video_id)
-        track = body().get('track_id')
-        if type(track) is not int or track not in [t['id'] for t in video['details'].get('tracks', [])]:
+        value = body()
+        tracks = value.get('track_ids', [value.get('track_id')])
+        valid = [t['id'] for t in video['details'].get('tracks', [])]
+        if not isinstance(tracks, list) or any(type(t) is not int or t not in valid for t in tracks):
             abort(400, '請選擇影片中實際存在的追蹤代號')
+        tracks = list(dict.fromkeys(tracks))
+        video['details']['assigned_tracks'] = tracks
         with connect(database) as db:
-            db.execute('UPDATE videos SET selected_track=? WHERE id=?', (track, video_id))
+            db.execute('UPDATE videos SET selected_track=?,details=? WHERE id=?', (tracks[0] if tracks else None, json.dumps(video['details'], ensure_ascii=False), video_id))
             db.execute('DELETE FROM queries WHERE resident_id=?', (video['resident_id'],))
         return jsonify(public_video(fetch_video(video_id)))
 
