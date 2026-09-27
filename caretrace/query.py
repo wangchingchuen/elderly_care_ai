@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .perception import KINDS
+from .perception import KINDS, MODEL_INIT_LOCK
 
 TZ = timezone(timedelta(hours=8))
 KEYWORDS = {
@@ -71,6 +71,10 @@ class Planner:
         self.error = None
 
     def _load(self):
+        with MODEL_INIT_LOCK:
+            self._load_locked()
+
+    def _load_locked(self):
         from transformers import AutoTokenizer, AutoModelForCausalLM
         import torch
         torch.set_num_threads(min(4, os.cpu_count() or 1))

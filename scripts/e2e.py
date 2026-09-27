@@ -60,15 +60,19 @@ try:
         report['video'] = {k:v for k,v in details.items() if k in ('status','duration','details','selected_track','events')}
         assert details['status'] == 'done'
         if details['selected_track'] is None and details['details']['tracks']:
-            page.get_by_label('此住民對應的追蹤代號').select_option(str(details['details']['tracks'][0]['id']))
+            with page.expect_response('**/assign'):
+                page.get_by_label('此住民對應的追蹤代號').select_option(str(details['details']['tracks'][0]['id']))
+            expect(page.get_by_label('此住民對應的追蹤代號')).to_be_enabled()
         if len(details['details']['tracks']) > 1:
             tracks = [str(t['id']) for t in details['details']['tracks'][:2]]
             with page.expect_response('**/assign'):
                 page.get_by_label('此住民對應的追蹤代號').select_option(tracks)
+            expect(page.get_by_label('此住民對應的追蹤代號')).to_be_enabled()
             assigned = page.request.get(url+f'/api/videos/{vid}').json()['details']['assigned_tracks']
             assert sorted(assigned) == sorted(map(int, tracks))
             with page.expect_response('**/assign'):
                 page.get_by_label('此住民對應的追蹤代號').select_option(tracks[:1])
+            expect(page.get_by_label('此住民對應的追蹤代號')).to_be_enabled()
             report['checks'].append('manual multi-track assignment UI')
         report['checks'].append('real upload, progress, YOLO + OmDet analysis, playable skeleton')
         if page.locator('.segment.fall').count():

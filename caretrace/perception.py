@@ -3,8 +3,13 @@ import os
 import math
 import subprocess
 import time
+import threading
 from collections import Counter, deque
 from pathlib import Path
+
+# Transformers' lazy/meta initialization changes global construction contexts.
+# Serialize initialization across the video worker and the query HTTP thread.
+MODEL_INIT_LOCK = threading.RLock()
 
 KINDS = {
     'standing': '站立', 'sitting': '坐姿', 'lying': '躺臥',
@@ -135,6 +140,10 @@ class Analyzer:
         self.pose = self.odt = self.processor = None
 
     def _load(self, daily):
+        with MODEL_INIT_LOCK:
+            self._load_locked(daily)
+
+    def _load_locked(self, daily):
         import torch
         torch.set_num_threads(min(4, os.cpu_count() or 1))
         self.device = os.getenv('CARETRACE_DEVICE', 'cuda' if torch.cuda.is_available() else 'cpu')
