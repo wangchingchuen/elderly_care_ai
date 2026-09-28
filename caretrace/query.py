@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .perception import KINDS, MODEL_INIT_LOCK
+from .i18n import translate
 
 TZ = timezone(timedelta(hours=8))
 KEYWORDS = {
@@ -110,6 +111,16 @@ class Planner:
                     {'role': 'assistant', 'content': '{"kind":"fall","operation":"list"}'},
                     {'role': 'user', 'content': '整理照護紀錄'},
                     {'role': 'assistant', 'content': '{"kind":"all","operation":"summary"}'},
+                    {'role': 'user', 'content': 'Are there any eating records?'},
+                    {'role': 'assistant', 'content': '{"kind":"eating","operation":"list"}'},
+                    {'role': 'user', 'content': 'Are there any possible falls?'},
+                    {'role': 'assistant', 'content': '{"kind":"fall","operation":"list"}'},
+                    {'role': 'user', 'content': 'Summarize the care records'},
+                    {'role': 'assistant', 'content': '{"kind":"all","operation":"summary"}'},
+                    {'role': 'user', 'content': 'Compare eating records this week and last week.'},
+                    {'role': 'assistant', 'content': '{"kind":"eating","operation":"compare"}'},
+                    {'role': 'user', 'content': 'How much food was eaten?'},
+                    {'role': 'assistant', 'content': '{"kind":"unsupported","operation":"list"}'},
                     {'role': 'user', 'content': (f'Previous behavior: {previous}.\n' if previous else '') + question}]
                 prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
                 inputs = self.tokenizer(prompt, return_tensors='pt', truncation=True, max_length=1536)
@@ -139,25 +150,27 @@ def within_dates(event, start, end):
     return (not start or day >= start) and (not end or day <= end)
 
 
-def answer(question, events, plan, start, end, compare=None):
+def answer(question, events, plan, start, end, compare=None, locale='zh-TW'):
+    def tr(message, *values):
+        return translate(message, locale, *values)
     kind = plan['kind']
     eligible = [e for e in events if e['review'] != 'rejected' and (kind == 'all' or e['kind'] == kind)]
     hits = [e for e in eligible if within_dates(e, start, end)]
     previous = [e for e in eligible if within_dates(e, *compare)] if compare else []
-    label = KINDS.get(kind, '照護事件')
+    label = tr(KINDS.get(kind, '照護事件'))
     if kind == 'unsupported':
-        text = '此問題超出目前可驗證的行為範圍。可查詢站立、坐姿、躺臥、疑似跌倒與進食候選；目前無法從影片判定診斷、服藥或實際攝取量。'
+        text = tr('此問題超出目前可驗證的行為範圍。可查詢站立、坐姿、躺臥、疑似跌倒與進食候選；目前無法從影片判定診斷、服藥或實際攝取量。')
         hits = []
     elif not hits:
-        text = f'所選範圍沒有足夠的「{label}」證據。這不代表該行為沒有發生；請確認影片涵蓋時間、分析狀態與住民追蹤對應。'
+        text = tr('所選範圍沒有足夠的「{0}」證據。這不代表該行為沒有發生；請確認影片涵蓋時間、分析狀態與住民追蹤對應。', label)
     else:
         reviewed = sum(e['review'] == 'confirmed' for e in hits)
-        text = f'找到 {len(hits)} 段「{label}」證據，其中 {reviewed} 段經人工確認，其餘仍待覆核。點選下方證據可回看對應時間。'
+        text = tr('找到 {0} 段「{1}」證據，其中 {2} 段經人工確認，其餘仍待覆核。點選下方證據可回看對應時間。', len(hits), label, reviewed)
         if kind == 'all' or plan.get('operation') == 'summary':
             counts = {k: sum(e['kind'] == k for e in hits) for k in KINDS}
-            text += ' 行為摘要：' + '、'.join(f'{KINDS[k]} {v} 段' for k, v in counts.items() if v) + '。'
+            text += tr(' 行為摘要：') + (', ' if locale == 'en' else '、').join(tr('{0} {1} 段', tr(KINDS[k]), v) for k, v in counts.items() if v) + ('.' if locale == 'en' else '。')
     if compare:
-        text += f' 本期有 {len(hits)} 段，對照期間有 {len(previous)} 段。兩期拍攝涵蓋時間可能不同，不能直接視為行為頻率或健康狀態變化。'
+        text += tr(' 本期有 {0} 段，對照期間有 {1} 段。兩期拍攝涵蓋時間可能不同，不能直接視為行為頻率或健康狀態變化。', len(hits), len(previous))
     if kind == 'eating':
-        text += ' 進食候選僅表示手部動作與餐具／食物線索同時出現，不能確認吃了多少。'
+        text += tr(' 進食候選僅表示手部動作與餐具／食物線索同時出現，不能確認吃了多少。')
     return text, hits, previous

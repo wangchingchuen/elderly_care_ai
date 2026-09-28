@@ -62,4 +62,8 @@ With Transformers 4.57.6 and timm 1.0.24, meta loading left Swin non-persistent 
 
 ## Versions
 
+`v0.2.0` adds a shared Traditional Chinese / English interface without changing the database schema. `caretrace/locales/en.json` is the shared frontend/backend catalog; Chinese source messages are the default. React changes presentation without remounting the workspace. User-entered names, notes and questions are never translated.
+
+API queries accept `Accept-Language: en` (or `?lang=en`). Responses contain both `answers.en` and `answers["zh-TW"]` from identical evidence and one model plan, plus the requested-language `answer`. Error and warning responses include their canonical source for instant switching. Persisted worker stages and detection signals remain canonical and are translated when displayed. CSV uses `?lang=en`; JSON exports preserve their machine-readable schema. Record display uses Taiwan time in both locales. Browser preference is stored as `caretrace.language`; disabled storage still permits switching for the current session.
+
 `v0.0.0-prototype` preserves the original Flask prototype. The `feature/caretrace-evidence-workspace` branch holds the implementation milestones, and `v0.1.0` identifies the tested local-workspace release. Database schema version 1 uses SQLite `user_version`. Future schema changes must include explicit migrations and backup instructions.

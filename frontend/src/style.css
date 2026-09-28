@@ -10,3 +10,16 @@
 nav button{font-size:13px}.privacy-card p{font-size:11px}.page-heading p{font-size:12px}.stats .stat>span:first-child{font-size:12px}
 @media(max-width:960px) and (min-width:521px){nav button{font-size:0}}
 @media(max-width:520px){nav button{font-size:10px}.scope-person{flex-wrap:wrap}.track-select select{min-height:65px}.scope-person select{max-width:210px}}
+
+/* Both locales share layout and controls. Longer English labels may wrap. */
+.language-toggle{border:1px solid #a5b795;border-radius:8px;padding:7px 11px;background:#f5f7f0;color:#334c2c;font-size:12px;font-weight:650;white-space:nowrap;cursor:pointer}
+.language-toggle:hover{background:#e4eddc}.language-toggle:focus-visible{outline:3px solid #718b51;outline-offset:3px}
+.modal-language{position:absolute;top:18px;right:55px}
+.topbar-right{flex-shrink:0}.event-top{flex-wrap:wrap}.track-select label{flex:1;min-width:0}.track-select select{flex-shrink:0}
+html[lang=en] .timeline-row>span{width:112px;flex-shrink:0}
+html[lang=en] .hero-panel h2{font-size:27px;max-width:75%}
+html[lang=en] .hero-panel p{max-width:70%}
+html[lang=en] .stat strong small{font-size:12px}
+html[lang=en] .stats .stat>span:first-child{font-size:11px}
+html[lang=en] .stat.warm .text-button{position:static;margin-top:5px;font-size:10px}
+@media(max-width:520px){.topbar{gap:8px}.topbar>div:first-child{min-width:0;font-size:11px}.topbar-right{gap:6px}.topbar-right>span{display:none}html[lang=en] .hero-panel h2{font-size:24px;max-width:100%}html[lang=en] .hero-panel p{max-width:100%}html[lang=en] nav button{font-size:9px}html[lang=en] .timeline-row>span{width:90px;font-size:10px}.track-select{flex-wrap:wrap}.track-select select{max-width:100%}}

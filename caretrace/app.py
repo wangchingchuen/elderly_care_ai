@@ -16,6 +16,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 from . import __version__
+from .i18n import translate, system_message
 from .db import connect, initialize, now, unpack
 from .perception import Analyzer, KINDS
 from .query import Planner, TZ, answer, date_range, event_time, within_dates
@@ -36,6 +37,12 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
     tasks = queue.Queue()
     app.config.update(MAX_CONTENT_LENGTH=512*1024*1024, DATABASE=str(database), DATA_DIR=str(data))
     app.extensions.update(analyzer=engine, planner=language, tasks=tasks)
+
+    def locale():
+        requested = request.args.get('lang')
+        if requested:
+            return 'en' if requested == 'en' else 'zh-TW'
+        return request.accept_languages.best_match(['zh-TW', 'en'], default='zh-TW')
 
     def fetch_video(video_id):
         with connect(database) as db:
@@ -107,6 +114,8 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
 
     @app.after_request
     def headers(response):
+        response.headers['Content-Language'] = locale()
+        response.vary.add('Accept-Language')
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['X-Frame-Options'] = 'DENY'
@@ -117,11 +126,11 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
 
     @app.errorhandler(HTTPException)
     def http_error(exc):
-        return jsonify(error=exc.description), exc.code
+        return jsonify(error=system_message(exc.description, locale()), error_source=exc.description), exc.code
 
     @app.errorhandler(ValueError)
     def validation_error(exc):
-        return jsonify(error=str(exc)), 400
+        return jsonify(error=system_message(str(exc), locale()), error_source=str(exc)), 400
 
     def body():
         value = request.get_json(silent=True)
@@ -297,8 +306,11 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
             abort(400, '請輸入 1–1000 字的問題')
         start, end, compare = date_range(question, value.get('start') or None, value.get('end') or None)
         plan, mode, warning = language.plan(question, resident['context'], value.get('previous_kind'))
-        text, hits, previous = answer(question, events_for(resident['id']), plan, start, end, compare)
-        result = dict(id=uuid.uuid4().hex, answer=text, plan=plan, mode=mode, warning=warning,
+        events = events_for(resident['id'])
+        text, hits, previous = answer(question, events, plan, start, end, compare)
+        answers = {'zh-TW': text, 'en': answer(question, events, plan, start, end, compare, locale='en')[0]}
+        result = dict(id=uuid.uuid4().hex, answer=answers[locale()], answers=answers, plan=plan, mode=mode,
+                      warning=system_message(warning, locale()), warning_source=warning,
                       scope={'resident_id': resident['id'], 'start': start, 'end': end, 'compare': compare},
                       evidence=hits, comparison_evidence=previous, created_at=now())
         with connect(database) as db:
@@ -314,12 +326,13 @@ def create_app(data_dir=None, analyzer=None, planner=None, start_worker=True):
             return jsonify(version=__version__, exported_at=now(), events=rows)
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['事件編號', '住民', '拍攝時間', '影片', '行為', '開始秒', '結束秒', '模型分數', '覆核', '備註', '證據'])
+        writer.writerow([translate(key, locale()) for key in ['事件編號', '住民', '拍攝時間', '影片', '行為', '開始秒', '結束秒', '模型分數', '覆核', '備註', '證據']])
         def safe(value):
             value = str(value)
             return "'"+value if value.lstrip().startswith(('=', '+', '-', '@')) else value
         for e in rows:
-            writer.writerow([safe(x) for x in [e['id'], e['resident_name'], event_time(e).astimezone(TZ).isoformat(), e['filename'], KINDS[e['kind']], e['start'], e['end'], e['score'], e['review'], e['note'], f"/media/{e['video_id']}/skeleton#t={e['start']}"]])
+            review_label = {'pending': '待覆核', 'confirmed': '已確認', 'rejected': '已排除'}[e['review']]
+            writer.writerow([safe(x) for x in [e['id'], e['resident_name'], event_time(e).astimezone(TZ).isoformat(), e['filename'], translate(KINDS[e['kind']], locale()), e['start'], e['end'], e['score'], translate(review_label, locale()), e['note'], f"/media/{e['video_id']}/skeleton#t={e['start']}"]])
         return send_file(io.BytesIO(output.getvalue().encode('utf-8-sig')), mimetype='text/csv', as_attachment=True, download_name='caretrace-records.csv')
 
     @app.get('/')

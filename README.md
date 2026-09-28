@@ -4,6 +4,12 @@
 
 採用既有 YOLOv8n-Pose、OmDet-Turbo 與本機 Qwen 模型，**不需要先訓練、不需要 API 金鑰**。前端為 React + TypeScript，後端為 Python / Flask，紀錄存入 SQLite。
 
+**繁體中文 / English：** 按右上角 **English** 切換英文，再按 **繁體中文** 切回。視窗內也有切換按鈕。語言設定會保存在此瀏覽器，切換時保留未送出的表單、影片播放位置及既有查詢結果；住民姓名、備註和問題原文不會被翻譯。兩種語言共用所有功能，CSV 欄位與行為名稱跟隨目前語言，時間均顯示台灣時區（UTC+8）。
+
+For English instructions, see [English usage guide](docs/usage-en.md).
+
+v0.2.0 的中英文流程驗證見 [雙語驗收紀錄](docs/validation-bilingual.md)。
+
 ![CareTrace 網頁介面（空白工作區，未包含私人影片）](docs/images/overview.png)
 
 ## 這台電腦直接啟動
